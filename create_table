@@ -1,0 +1,25 @@
+CREATE TABLE `meli-bi-data.SBOX_MKTVIS.P_MOTORS_SUGGESTED_PRICE`
+(
+    DS DATE OPTIONS(description="Fecha en meli tracks")
+  , SERVER_TIMESTAMP TIMESTAMP 
+  , SIT_SITE_ID STRING
+  , ITE_ITEM_ID NUMERIC
+  , BRAND STRING
+  , MODEL STRING
+  , KILOMETERS STRING
+  , VEHICLE_YEAR STRING
+  , VEHICLE_BODY_TYPE STRING
+  , SIT_CURRENCY_ID STRING
+  , ITE_ITEM_CURRENT_PRICE STRING
+  , ESTIMATED_PRICE NUMERIC
+  , LOWER_LIMIT NUMERIC
+  , LOWER_BAND NUMERIC
+  , UPPER_BAND NUMERIC
+  , UPPER_LIMIT NUMERIC
+  , PREDICTOR_MODEL_VERSION STRING
+)
+PARTITION BY DS
+CLUSTER BY SIT_SITE_ID
+OPTIONS(
+  description="Cada fila representa la recomendacion que se le da a un usuario cuando carga un anuncio de motors, puede haber duplicacion de items si editan el anuncio. Fuente: melitracks. path = '/vis/supply/price_suggestion/bands'. type = 'event'")
+
