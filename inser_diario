@@ -1,0 +1,71 @@
+--parametro: FILTRO_PERIODO = CURRENT_DATE() - 1
+
+DECLARE FILTRO_PERIODO DATE DEFAULT /*'YYYY-MM-01'*/ <FILTRO_PERIODO>
+;
+
+
+-- BORRO REGISTROS PARA EVITAR DUPLICIDAD AL INSERTAR MISMO PERIODO VARIAS VECES
+DELETE `meli-bi-data.SBOX_MKTVIS.P_MOTORS_SUGGESTED_PRICE`
+WHERE DS = FILTRO_PERIODO
+;
+
+INSERT INTO `meli-bi-data.SBOX_MKTVIS.P_MOTORS_SUGGESTED_PRICE`
+
+WITH A AS
+(
+  SELECT
+      CAST(ds AS DATE) AS ds
+    , CAST(server_timestamp AS TIMESTAMP) AS server_timestamp
+    , UPPER(REGEXP_EXTRACT(json_extract_scalar(event_data, '$.item_id'), '[A-Z]+')) as SIT_SITE_ID
+    , CAST(REGEXP_EXTRACT(json_extract_scalar(event_data, '$.item_id'), '[0-9]+') AS NUMERIC) as ITE_ITEM_ID
+
+    , (select json_extract_scalar( att , '$.attribute_value') from unnest(json_query_array(json_extract(event_data, '$.attributes'))) as att where json_extract_scalar( att , '$.attribute_id')  = 'BRAND') AS BRAND
+    , (select json_extract_scalar( att , '$.attribute_value') from unnest(json_query_array(json_extract(event_data, '$.attributes'))) as att where json_extract_scalar( att , '$.attribute_id')  = 'MODEL') AS MODEL
+    , (select json_extract_scalar( att , '$.attribute_value') from unnest(json_query_array(json_extract(event_data, '$.attributes'))) as att where json_extract_scalar( att , '$.attribute_id')  = 'KILOMETERS') AS KILOMETERS
+    , (select json_extract_scalar( att , '$.attribute_value') from unnest(json_query_array(json_extract(event_data, '$.attributes'))) as att where json_extract_scalar( att , '$.attribute_id')  = 'VEHICLE_YEAR') AS VEHICLE_YEAR
+    , (select json_extract_scalar( att , '$.attribute_value') from unnest(json_query_array(json_extract(event_data, '$.attributes'))) as att where json_extract_scalar( att , '$.attribute_id')  = 'VEHICLE_BODY_TYPE') AS VEHICLE_BODY_TYPE
+
+
+    , UPPER(json_extract_scalar(event_data, '$.currency_id')) as SIT_CURRENCY_ID
+    , CAST(SPLIT(json_extract_scalar(event_data, '$.price'), '.')[safe_ordinal(1)] AS STRING)  as ITE_ITEM_CURRENT_PRICE -- precio en string para que no rompa si cargan un precio con muchos caracteres
+    , CAST(json_extract_scalar(event_data, '$.prices_bands.estimated_price') AS NUMERIC) as estimated_price
+    , CAST(json_extract_scalar(event_data, '$.prices_bands.lower_limit') AS NUMERIC) as lower_limit
+    , CAST(json_extract_scalar(event_data, '$.prices_bands.lower_band') AS NUMERIC) as lower_band
+    , CAST(json_extract_scalar(event_data, '$.prices_bands.upper_band') AS NUMERIC) as upper_band
+    , CAST(json_extract_scalar(event_data, '$.prices_bands.upper_limit') AS NUMERIC) as upper_limit
+    , json_extract_scalar(event_data, '$.predictor_model_version') as predictor_model_version
+
+
+  FROM `meli-bi-data.MELIDATA.TRACKS`
+
+  WHERE path = '/vis/supply/price_suggestion/bands'
+    AND bu = 'mercadolibre'
+    AND ds = FILTRO_PERIODO
+    AND type = 'event'
+    AND json_extract_scalar(event_data, '$.currency_id') is not null
+    AND CAST(json_extract_scalar(event_data, '$.prices_bands.estimated_price') AS NUMERIC) > 0
+)
+
+SELECT
+    DS
+  , SERVER_TIMESTAMP
+  , SIT_SITE_ID
+  , ITE_ITEM_ID
+  , BRAND
+  , MODEL
+  , KILOMETERS
+  , VEHICLE_YEAR
+  , VEHICLE_BODY_TYPE
+  , SIT_CURRENCY_ID
+  , ITE_ITEM_CURRENT_PRICE
+  , ESTIMATED_PRICE 
+  , LOWER_LIMIT
+  , LOWER_BAND
+  , UPPER_BAND
+  , UPPER_LIMIT
+  , PREDICTOR_MODEL_VERSION
+
+FROM A
+
+QUALIFY ROW_NUMBER () OVER (PARTITION BY DS,SIT_SITE_ID,ITE_ITEM_ID ORDER BY server_timestamp DESC) = 1 -- si edito el anuncio varias veces el mismo dia, traer el ultimo
+;
